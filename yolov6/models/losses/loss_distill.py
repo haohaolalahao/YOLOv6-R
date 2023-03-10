@@ -68,18 +68,20 @@ class ComputeLoss:
         temperature,
         step_num
     ):
-
+        #NOTE student Trainer 输出结果
         feats, pred_scores, pred_distri = outputs
+        #NOTE teachu training 输出结果
         t_feats, t_pred_scores, t_pred_distri = t_outputs[0], t_outputs[-2], t_outputs[-1]
         anchors, anchor_points, n_anchors_list, stride_tensor = \
                generate_anchors(feats, self.fpn_strides, self.grid_cell_size, self.grid_cell_offset, device=feats[0].device)
         t_anchors, t_anchor_points, t_n_anchors_list, t_stride_tensor = \
                generate_anchors(t_feats, self.fpn_strides, self.grid_cell_size, self.grid_cell_offset, device=feats[0].device)
-
+        #NOTE 对应生成两个Anchor anchor size 用来解码
         assert pred_scores.type() == pred_distri.type()
         gt_bboxes_scale = torch.full((1,4), self.ori_img_size).type_as(pred_scores)
         batch_size = pred_scores.shape[0]
-
+        # 标签是一致的
+        # 进行解码
         # targets
         targets =self.preprocess(targets, batch_size, gt_bboxes_scale)
         gt_labels = targets[:, :, :1]
@@ -164,7 +166,7 @@ class ComputeLoss:
         #Dynamic release GPU memory
         if step_num % 10 == 0:
             torch.cuda.empty_cache()
-
+        #NOTE - cls loss
         # rescale bbox
         target_bboxes /= stride_tensor
 
@@ -183,7 +185,9 @@ class ComputeLoss:
                                                      target_bboxes, target_scores, target_scores_sum, fg_mask)
 
         logits_student = pred_scores
+        #NOTE cls - logit
         logits_teacher = t_pred_scores
+        #NOTE cls - logit
         distill_num_classes = self.num_classes
         d_loss_cls = self.distill_loss_cls(logits_student, logits_teacher, distill_num_classes, temperature)
         if self.distill_feat:
@@ -211,10 +215,11 @@ class ComputeLoss:
     def distill_loss_cls(self, logits_student, logits_teacher, num_classes, temperature=20):
         logits_student = logits_student.view(-1, num_classes)
         logits_teacher = logits_teacher.view(-1, num_classes)
+        #NOTE - Original KL divergence
         pred_student = F.softmax(logits_student / temperature, dim=1)
         pred_teacher = F.softmax(logits_teacher / temperature, dim=1)
         log_pred_student = torch.log(pred_student)
-
+        #NOTE - Calculate LOSS
         d_loss_cls = F.kl_div(log_pred_student, pred_teacher, reduction="sum")
         d_loss_cls *= temperature**2
         return d_loss_cls
@@ -291,12 +296,14 @@ class BboxLoss(nn.Module):
                                                   bbox_mask).reshape([-1, 4])
             t_pred_bboxes_pos = torch.masked_select(t_pred_bboxes,
                                                   bbox_mask).reshape([-1, 4])
+            #NOTE 根据Student来分配Teacher 正样本数量
             target_bboxes_pos = torch.masked_select(
                 target_bboxes, bbox_mask).reshape([-1, 4])
             bbox_weight = torch.masked_select(
                 target_scores.sum(-1), fg_mask).unsqueeze(-1)
             loss_iou = self.iou_loss(pred_bboxes_pos,
                                      target_bboxes_pos) * bbox_weight
+            #
             if target_scores_sum == 0:
                 loss_iou = loss_iou.sum()
             else:
