@@ -1,6 +1,6 @@
 python -m torch.distributed.launch --nproc_per_node 2 tools/train_R.py \
 	--device 0,1 \
-	--batch 16 \
+	--batch 12 \
 	--epochs 36 \
 	--img 1024 \
 	--eval-interval 5 \

@@ -10,8 +10,7 @@ from copy import deepcopy
 import cv2
 import numpy as np
 import torch
-from rich.progress import (BarColumn, Progress, SpinnerColumn, TextColumn,
-                           TimeElapsedColumn, TimeRemainingColumn)
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 from torch.cuda import amp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
@@ -19,23 +18,20 @@ from tqdm import tqdm
 
 import tools.eval_R as eval
 from yolov6.data.data_load_R import create_dataloader
-from yolov6.models.losses.loss_distill_R import \
-    ComputeLoss as ComputeLoss_distill
+from yolov6.models.losses.loss_distill_R import ComputeLoss as ComputeLoss_distill
 from yolov6.models.losses.loss_fuseab import ComputeLoss as ComputeLoss_ab
 from yolov6.models.losses.loss_R import ComputeLoss as ComputeLoss
 from yolov6.models.yolo_R import build_model
 from yolov6.solver.build import build_lr_scheduler, build_optimizer
-from yolov6.utils.checkpoint import (load_state_dict, save_checkpoint,
-                                     strip_optimizer)
+from yolov6.utils.checkpoint import load_state_dict, save_checkpoint, strip_optimizer
 from yolov6.utils.ema import ModelEMA, de_parallel
-from yolov6.utils.events_R import (LOGGER, NCOLS, load_yaml, write_tbimg,
-                                   write_tblog)
+from yolov6.utils.events_R import LOGGER, NCOLS, load_yaml, write_tbimg, write_tblog
 from yolov6.utils.general import download_ckpt
 from yolov6.utils.nms_R import xywh2xyxy, xyxy2xywh
 from yolov6.utils.RepOptimizer import RepVGGOptimizer, extract_scales
 
 # from yolov6.models.losses.loss_distill_ns_R import \
-    # ComputeLoss as ComputeLoss_distill_ns
+# ComputeLoss as ComputeLoss_distill_ns
 
 
 class Trainer:
@@ -56,9 +52,7 @@ class Trainer:
         self.data_dict = load_yaml(args.data_path)
         self.num_classes = self.data_dict["nc"]
         # NOTE data loader
-        self.train_loader, self.val_loader = self.get_data_loader(
-            args, cfg, self.data_dict
-        )
+        self.train_loader, self.val_loader = self.get_data_loader(args, cfg, self.data_dict)
         # get model and optimizer
         # NOTE YOLOv6n 和 YOLOV6s 都是默认蒸馏配置, 需要将这个解耦开了
 
@@ -69,9 +63,7 @@ class Trainer:
             if self.args.fuse_ab:
                 LOGGER.error("ERROR in: Distill models should turn off the fuse_ab.\n")
                 exit()
-            self.teacher_model = self.get_teacher_model(
-                args, cfg, self.num_classes, device
-            )
+            self.teacher_model = self.get_teacher_model(args, cfg, self.num_classes, device)
         if self.args.quant:
             self.quant_setup(model, cfg, device)
         if cfg.training_mode == "repopt":
@@ -87,9 +79,7 @@ class Trainer:
         self.start_epoch = 0
         # resume
         if hasattr(self, "ckpt"):
-            resume_state_dict = (
-                self.ckpt["model"].float().state_dict()
-            )  # checkpoint state_dict as FP32
+            resume_state_dict = self.ckpt["model"].float().state_dict()  # checkpoint state_dict as FP32
             model.load_state_dict(resume_state_dict, strict=True)  # load
             self.start_epoch = self.ckpt["epoch"] + 1
             self.optimizer.load_state_dict(self.ckpt["optimizer"])
@@ -106,9 +96,7 @@ class Trainer:
         self.vis_imgs_list = []
         self.write_trainbatch_tb = args.write_trainbatch_tb
         # set color for classnames
-        self.color = [
-            tuple(np.random.choice(range(256), size=3)) for _ in range(self.model.nc)
-        ]
+        self.color = [tuple(np.random.choice(range(256), size=3)) for _ in range(self.model.nc)]
         # REVIEW loss_num and info
         self.loss_num = 4
         self.loss_info = ["Epoch", "iou_loss", "dfl_loss", "cls_loss", "ang_loss"]
@@ -297,9 +285,7 @@ class Trainer:
                 total_loss += total_loss_ab
                 loss_items += loss_items_ab
             else:
-                total_loss, loss_items = self.compute_loss(
-                    preds, targets, epoch_num, step_num
-                )  # YOLOv6_af
+                total_loss, loss_items = self.compute_loss(preds, targets, epoch_num, step_num)  # YOLOv6_af
             if self.rank != -1:
                 total_loss *= self.world_size
         # backward
@@ -309,20 +295,14 @@ class Trainer:
 
     def eval_and_save(self):
         remaining_epochs = self.max_epoch - self.epoch
-        eval_interval = (
-            self.args.eval_interval
-            if remaining_epochs > self.args.heavy_eval_range
-            else 3
-        )
+        eval_interval = self.args.eval_interval if remaining_epochs > self.args.heavy_eval_range else 3
         is_val_epoch = (
             (not self.args.eval_final_only or (remaining_epochs == 1))
             and (self.epoch % eval_interval == 0)
             and (self.epoch != 0)
         )
         if self.main_process:
-            self.ema.update_attr(
-                self.model, include=["nc", "names", "stride"]
-            )  # update attributes for ema model
+            self.ema.update_attr(self.model, include=["nc", "names", "stride"])  # update attributes for ema model
             if is_val_epoch:
                 self.eval_model()
                 self.ap = self.evaluate_results[1]
@@ -344,19 +324,13 @@ class Trainer:
                 model_name="last_ckpt",
             )
             if self.epoch >= self.max_epoch - self.args.save_ckpt_on_last_n_epoch:
-                save_checkpoint(
-                    ckpt, False, save_ckpt_dir, model_name=f"{self.epoch}_ckpt"
-                )
+                save_checkpoint(ckpt, False, save_ckpt_dir, model_name=f"{self.epoch}_ckpt")
 
             # default save best ap ckpt in stop strong aug epochs
             if self.epoch >= self.max_epoch - self.args.stop_aug_last_n_epoch:
                 if self.best_stop_strong_aug_ap < self.ap:
-                    self.best_stop_strong_aug_ap = max(
-                        self.ap, self.best_stop_strong_aug_ap
-                    )
-                    save_checkpoint(
-                        ckpt, False, save_ckpt_dir, model_name="best_stop_aug_ckpt"
-                    )
+                    self.best_stop_strong_aug_ap = max(self.ap, self.best_stop_strong_aug_ap)
+                    save_checkpoint(ckpt, False, save_ckpt_dir, model_name="best_stop_aug_ckpt")
 
             del ckpt
             # log for learning rate
@@ -364,9 +338,7 @@ class Trainer:
             self.evaluate_results = list(self.evaluate_results) + lr
 
             # log for tensorboard
-            write_tblog(
-                self.tblogger, self.epoch, self.evaluate_results, self.mean_loss
-            )
+            write_tblog(self.tblogger, self.epoch, self.evaluate_results, self.mean_loss)
             # save validation predictions to tensorboard
             write_tbimg(self.tblogger, self.vis_imgs_list, self.epoch, type="val")
 
@@ -374,7 +346,7 @@ class Trainer:
         if not hasattr(self.cfg, "eval_params"):
             results, vis_outputs, vis_paths = eval.run(
                 self.data_dict,
-                batch_size=self.batch_size // self.world_size * 2,
+                batch_size=self.batch_size // self.world_size * 1,  # NOTE 容易cudaoutofmemory, 原来2
                 img_size=self.img_size,
                 model=self.ema.ema if self.args.calib is False else self.model,
                 conf_thres=0.03,
@@ -390,23 +362,13 @@ class Trainer:
             def get_cfg_value(cfg_dict, value_str, default_value):
                 if value_str in cfg_dict:
                     if isinstance(cfg_dict[value_str], list):
-                        return (
-                            cfg_dict[value_str][0]
-                            if cfg_dict[value_str][0] is not None
-                            else default_value
-                        )
+                        return cfg_dict[value_str][0] if cfg_dict[value_str][0] is not None else default_value
                     else:
-                        return (
-                            cfg_dict[value_str]
-                            if cfg_dict[value_str] is not None
-                            else default_value
-                        )
+                        return cfg_dict[value_str] if cfg_dict[value_str] is not None else default_value
                 else:
                     return default_value
 
-            eval_img_size = get_cfg_value(
-                self.cfg.eval_params, "img_size", self.img_size
-            )
+            eval_img_size = get_cfg_value(self.cfg.eval_params, "img_size", self.img_size)
             results, vis_outputs, vis_paths = eval.run(
                 self.data_dict,
                 batch_size=get_cfg_value(
@@ -420,34 +382,22 @@ class Trainer:
                 dataloader=self.val_loader,
                 save_dir=self.save_dir,
                 task="train",
-                test_load_size=get_cfg_value(
-                    self.cfg.eval_params, "test_load_size", eval_img_size
-                ),
-                letterbox_return_int=get_cfg_value(
-                    self.cfg.eval_params, "letterbox_return_int", False
-                ),
+                test_load_size=get_cfg_value(self.cfg.eval_params, "test_load_size", eval_img_size),
+                letterbox_return_int=get_cfg_value(self.cfg.eval_params, "letterbox_return_int", False),
                 force_no_pad=get_cfg_value(self.cfg.eval_params, "force_no_pad", False),
-                not_infer_on_rect=get_cfg_value(
-                    self.cfg.eval_params, "not_infer_on_rect", False
-                ),
+                not_infer_on_rect=get_cfg_value(self.cfg.eval_params, "not_infer_on_rect", False),
                 scale_exact=get_cfg_value(self.cfg.eval_params, "scale_exact", False),
                 verbose=get_cfg_value(self.cfg.eval_params, "verbose", False),
-                do_coco_metric=get_cfg_value(
-                    self.cfg.eval_params, "do_coco_metric", False
-                ),
+                do_coco_metric=get_cfg_value(self.cfg.eval_params, "do_coco_metric", False),
                 do_pr_metric=get_cfg_value(self.cfg.eval_params, "do_pr_metric", True),
                 plot_curve=get_cfg_value(self.cfg.eval_params, "plot_curve", False),
-                plot_confusion_matrix=get_cfg_value(
-                    self.cfg.eval_params, "plot_confusion_matrix", False
-                ),
+                plot_confusion_matrix=get_cfg_value(self.cfg.eval_params, "plot_confusion_matrix", False),
                 angle_max=self.cfg.model.head.angle_max,
                 angle_fitting_methods=self.cfg.model.head.angle_fitting_methods,
                 ap_method=get_cfg_value(self.cfg.eval_params, "ap_method", False),
             )
 
-        LOGGER.info(
-            f"Epoch: {self.epoch} | mAP@0.5: {results[0]} | mAP@0.50:0.95: {results[1]}"
-        )
+        LOGGER.info(f"Epoch: {self.epoch} | mAP@0.5: {results[0]} | mAP@0.50:0.95: {results[1]}")
         self.evaluate_results = results[:2]
         # plot validation predictions
         self.plot_val_pred(vis_outputs, vis_paths)
@@ -456,9 +406,7 @@ class Trainer:
         LOGGER.info("Training start...")
         self.start_time = time.time()
         self.warmup_stepnum = (
-            max(round(self.cfg.solver.warmup_epochs * self.max_stepnum), 1000)
-            if self.args.quant is False
-            else 0
+            max(round(self.cfg.solver.warmup_epochs * self.max_stepnum), 1000) if self.args.quant is False else 0
         )
         self.scheduler.last_epoch = self.start_epoch - 1
         self.last_opt_step = -1
@@ -536,9 +484,7 @@ class Trainer:
         if self.epoch == self.max_epoch - self.args.stop_aug_last_n_epoch:
             self.cfg.data_aug.mosaic = 0.0
             self.cfg.data_aug.mixup = 0.0
-            self.train_loader, self.val_loader = self.get_data_loader(
-                self.args, self.cfg, self.data_dict
-            )
+            self.train_loader, self.val_loader = self.get_data_loader(self.args, self.cfg, self.data_dict)
         self.model.train()
         if self.rank != -1:
             self.train_loader.sampler.set_epoch(self.epoch)
@@ -580,9 +526,7 @@ class Trainer:
     # Print loss after each steps
     def print_details(self):
         if self.main_process:
-            self.mean_loss = (self.mean_loss * self.step + self.loss_items) / (
-                self.step + 1
-            )
+            self.mean_loss = (self.mean_loss * self.step + self.loss_items) / (self.step + 1)
             # TODO
             # self.pbar.set_description(
             #     ("%10s" + "%10.4g" * self.loss_num) % (f"{self.epoch}/{self.max_epoch - 1}", *(self.mean_loss))
@@ -607,13 +551,9 @@ class Trainer:
 
     def strip_model(self):
         if self.main_process:
-            LOGGER.info(
-                f"\nTraining completed in {(time.time() - self.start_time) / 3600:.3f} hours."
-            )
+            LOGGER.info(f"\nTraining completed in {(time.time() - self.start_time) / 3600:.3f} hours.")
             save_ckpt_dir = osp.join(self.save_dir, "weights")
-            strip_optimizer(
-                save_ckpt_dir, self.epoch
-            )  # strip optimizers for saved pt model
+            strip_optimizer(save_ckpt_dir, self.epoch)  # strip optimizers for saved pt model
 
     # Empty cache if training finished
     def train_after_loop(self):
@@ -626,9 +566,7 @@ class Trainer:
         if curr_step <= self.warmup_stepnum:
             self.accumulate = max(
                 1,
-                np.interp(
-                    curr_step, [0, self.warmup_stepnum], [1, 64 / self.batch_size]
-                ).round(),
+                np.interp(curr_step, [0, self.warmup_stepnum], [1, 64 / self.batch_size]).round(),
             )
             for k, param in enumerate(self.optimizer.param_groups):
                 warmup_bias_lr = self.cfg.solver.warmup_bias_lr if k == 2 else 0.0
@@ -658,9 +596,7 @@ class Trainer:
         # check data
         nc = int(data_dict["nc"])
         class_names = data_dict["names"]
-        assert (
-            len(class_names) == nc
-        ), f"the length of class names does not match the number of classes defined"
+        assert len(class_names) == nc, f"the length of class names does not match the number of classes defined"
         grid_size = max(int(max(cfg.model.head.strides)), 32)
         # create train dataloader
         train_loader = create_dataloader(
@@ -707,9 +643,7 @@ class Trainer:
         return images, targets
 
     def get_model(self, args, cfg, nc, device):
-        model = build_model(
-            cfg, nc, device, fuse_ab=self.args.fuse_ab, distill_ns=False
-        )
+        model = build_model(cfg, nc, device, fuse_ab=self.args.fuse_ab, distill_ns=False)
         weights = cfg.model.pretrained
         # NOTE load weights
         # TODO 预训练
@@ -763,9 +697,7 @@ class Trainer:
         # If DDP mode
         ddp_mode = device.type != "cpu" and args.rank != -1
         if ddp_mode:
-            model = DDP(
-                model, device_ids=[args.local_rank], output_device=args.local_rank, find_unused_parameters=True
-            )
+            model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank, find_unused_parameters=True)
 
         return model
 
@@ -773,9 +705,7 @@ class Trainer:
         # NOTE batchsize gpu_cont 影响
         accumulate = max(1, round(64 / args.batch_size))
         cfg.solver.weight_decay *= args.batch_size * accumulate / 64
-        cfg.solver.lr0 *= args.batch_size / (
-            self.world_size * args.bs_per_gpu
-        )  # rescale lr0 related to batchsize
+        cfg.solver.lr0 *= args.batch_size / (self.world_size * args.bs_per_gpu)  # rescale lr0 related to batchsize
         optimizer = build_optimizer(cfg, model)
         return optimizer
 
@@ -813,9 +743,7 @@ class Trainer:
             mosaic = cv2.resize(mosaic, tuple(int(x * ns) for x in (w, h)))
         for i in range(bs):
             x, y = int(w * (i // ns)), int(h * (i % ns))  # block origin
-            cv2.rectangle(
-                mosaic, (x, y), (x + w, y + h), (255, 255, 255), thickness=2
-            )  # borders
+            cv2.rectangle(mosaic, (x, y), (x + w, y + h), (255, 255, 255), thickness=2)  # borders
             cv2.putText(
                 mosaic,
                 f"{os.path.basename(paths[i])[:40]}",
@@ -840,15 +768,11 @@ class Trainer:
                 boxes[[0]] += x
                 boxes[[1]] += y
                 # boxes_xywh = xyxy2xywh(boxes.T)
-                for j, (box, angle) in enumerate(
-                    zip(boxes.T.tolist(), angles.tolist())
-                ):
+                for j, (box, angle) in enumerate(zip(boxes.T.tolist(), angles.tolist())):
                     box = [int(k) for k in box]
                     cls = classes[j]
                     color = tuple([int(x) for x in self.color[cls]])
-                    cls = (
-                        self.data_dict["names"][cls] if self.data_dict["names"] else cls
-                    )
+                    cls = self.data_dict["names"][cls] if self.data_dict["names"] else cls
                     if labels:
                         label = f"{cls}"
                         rect = ((box[0], box[1]), (box[2], box[3]), int(angle[0]))
@@ -929,9 +853,7 @@ class Trainer:
             LOGGER.info("Saving calibrated model to {}... ".format(output_model_path))
             if not os.path.exists(cfg.ptq.calib_output_path):
                 os.mkdir(cfg.ptq.calib_output_path)
-            torch.save(
-                {"model": deepcopy(de_parallel(model)).half()}, output_model_path
-            )
+            torch.save({"model": deepcopy(de_parallel(model)).half()}, output_model_path)
 
         assert self.args.quant is True and self.args.calib is True
         if self.main_process:
@@ -945,8 +867,7 @@ class Trainer:
     # QAT
     def quant_setup(self, model, cfg, device):
         if self.args.quant:
-            from tools.qat.qat_utils import (qat_init_model_manu,
-                                             skip_sensitive_layers)
+            from tools.qat.qat_utils import qat_init_model_manu, skip_sensitive_layers
 
             qat_init_model_manu(model, cfg, self.args)
             # workaround
@@ -959,7 +880,5 @@ class Trainer:
                     skip_sensitive_layers(model, cfg.qat.sensitive_layers_list)
                 # QAT flow load calibrated model
                 assert cfg.qat.calib_pt is not None, "Please provide calibrated model"
-                model.load_state_dict(
-                    torch.load(cfg.qat.calib_pt)["model"].float().state_dict()
-                )
+                model.load_state_dict(torch.load(cfg.qat.calib_pt)["model"].float().state_dict())
             model.to(device)
