@@ -245,7 +245,7 @@ class ComputeLoss:
             pred_angles_MGAR_reg = pred_angles[:,:,-1:]**2
             pred_angles_decode = pred_angles_MGAR_cls+pred_angles_MGAR_reg
         return pred_angles_decode
-        
+
     def preprocess(self, targets, batch_size, scale_tensor):
         targets_list = np.zeros((batch_size, 1, 6)).tolist()
         for i, item in enumerate(targets.cpu().numpy().tolist()):

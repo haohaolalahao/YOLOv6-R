@@ -8,6 +8,10 @@ import random
 
 import cv2
 import numpy as np
+import torch
+from mmcv.ops import box_iou_rotated
+
+
 
 
 def RFlipVertical(img: np.ndarray, bboxes: np.ndarray):
@@ -217,34 +221,46 @@ def random_affine(img, labels=(), degrees=10, translate=0.1, scale=0.1, shear=10
     return img, labels
 
 
-def get_transform_matrix(img_shape, new_shape, degrees, scale, shear, translate):
-    new_height, new_width = new_shape
-    # Center
-    C = np.eye(3)
-    C[0, 2] = -img_shape[1] / 2  # x translation (pixels)
-    C[1, 2] = -img_shape[0] / 2  # y translation (pixels)
+# TODO Random Flip Function
+def RRandomFlip(img, bboxes, flip_ratio = 0.25, direction="horizon", version="oc"):
+    """
+    Flip an image horizontally or vertically.
+    Args:
+        img (ndarray): Image to be flipped.
+        direction (str): The flip direction, either "horizontal" or
+            "vertical" or "diagonal".
+    Returns:
+        ndarray: The flipped image.
+    """
+    assert bboxes.shape[-1] % 5 == 0
+    orig_shape = bboxes.shape
+    bboxes = bboxes.reshape((-1, 5))
+    flipped = bboxes.copy()
+    img_shape = img
+    if direction == 'horizontal':
+        flipped[:, 0] = img_shape[1] - bboxes[:, 0] - 1
+        flip_img = np.flip(img, axis=1)
+    elif direction == 'vertical':
+        flipped[:, 1] = img_shape[0] - bboxes[:, 1] - 1
+        flip_img = np.flip(img, axis=0)
+    elif direction == 'diagonal':
+        flipped[:, 0] = img_shape[1] - bboxes[:, 0] - 1
+        flipped[:, 1] = img_shape[0] - bboxes[:, 1] - 1
+        flip_img = np.flip(img, axis=(0, 1))
+        return flip_img, flipped.reshape(orig_shape)
+    else:
+        raise ValueError(f'Invalid flipping direction "{direction}"')
+    if version == 'oc':
+        rotated_flag = (bboxes[:, 4] != np.pi / 2)
+        flipped[rotated_flag, 4] = np.pi / 2 - bboxes[rotated_flag, 4]
+        flipped[rotated_flag, 2] = bboxes[rotated_flag, 3]
+        flipped[rotated_flag, 3] = bboxes[rotated_flag, 2]
+    else:
+        flipped[:, 4] = norm_angle(np.pi - bboxes[:, 4], self.version)
+    return flip_img, flipped.reshape(orig_shape)
 
-    # Rotation and Scale
-    R = np.eye(3)
-    a = random.uniform(-degrees, degrees)
-    # a += random.choice([-180, -90, 0, 90])  # add 90deg rotations to small rotations
-    s = random.uniform(1 - scale, 1 + scale)
-    # s = 2 ** random.uniform(-scale, scale)
-    R[:2] = cv2.getRotationMatrix2D(angle=a, center=(0, 0), scale=s)
-
-    # Shear
-    S = np.eye(3)
-    S[0, 1] = math.tan(random.uniform(-shear, shear) * math.pi / 180)  # x shear (deg)
-    S[1, 0] = math.tan(random.uniform(-shear, shear) * math.pi / 180)  # y shear (deg)
-
-    # Translation
-    T = np.eye(3)
-    T[0, 2] = random.uniform(0.5 - translate, 0.5 + translate) * new_width  # x translation (pixels)
-    T[1, 2] = random.uniform(0.5 - translate, 0.5 + translate) * new_height  # y transla ion (pixels)
-
-    # Combined rotation matrix
-    M = T @ S @ R @ C  # order of operations (right to left) is IMPORTANT
-    return M, s
+#TODO RESIZE Augmentation
+# def RResize(img, bboxes, keep_ratio=True, ratio_range=None, img_scale = None)
 
 
 def mosaic_augmentation(img_size, imgs, hs, ws, labels, hyp):
@@ -272,21 +288,35 @@ def mosaic_augmentation(img_size, imgs, hs, ws, labels, hyp):
             x1a, y1a, x2a, y2a = xc, yc, min(xc + w, s * 2), min(s * 2, yc + h)
             x1b, y1b, x2b, y2b = 0, 0, min(w, x2a - x1a), min(y2a - y1a, h)
 
-        img4[y1a:y2a, x1a:x2a] = img[y1b:y2b, x1b:x2b]  # img4[ymin:ymax, xmin:xmax]
-        padw = x1a - x1b
-        padh = y1a - y1b
+#NOTE RandomCrop
+def RRandomCrop(img, bboxes, labels, crop_size, allow_negative_crop = False, bbox_clip_border=True, iof_thr=0.7, version='oc'):
 
-        # Labels
-        labels_per_img = labels[i].copy()
-        if labels_per_img.size:
-            boxes = np.copy(labels_per_img[:, 1:])
-            boxes[:, 0] = w * (labels_per_img[:, 1] - labels_per_img[:, 3] / 2) + padw  # top left x
-            boxes[:, 1] = h * (labels_per_img[:, 2] - labels_per_img[:, 4] / 2) + padh  # top left y
-            boxes[:, 2] = w * (labels_per_img[:, 1] + labels_per_img[:, 3] / 2) + padw  # bottom right x
-            boxes[:, 3] = h * (labels_per_img[:, 2] + labels_per_img[:, 4] / 2) + padh  # bottom right y
-            labels_per_img[:, 1:] = boxes
+    assert crop_size[0] > 0 and crop_size[1] > 0
+    margin_h = max(img.shape[0] - crop_size[0], 0)
+    margin_w = max(img.shape[1] - crop_size[1], 0)
+    offset_h = np.random.randint(0, margin_h + 1)
+    offset_w = np.random.randint(0, margin_w + 1)
+    crop_y1, crop_y2 = offset_h, offset_h + crop_size[0]
+    crop_x1, crop_x2 = offset_w, offset_w + crop_size[1]
+    img = img[crop_y1:crop_y2, crop_x1:crop_x2, ...]
+    img_shape = img.shape
+    height, width, _ = img_shape
+    bbox_offset = np.array([offset_w, offset_h, 0, 0, 0],
+                                   dtype=np.float32)
+    bboxes = bboxes - bbox_offset
 
-        labels4.append(labels_per_img)
+    windows = np.array([width / 2, height / 2, width, height, 0],
+                               dtype=np.float32).reshape(-1, 5)
+
+    valid_inds = box_iou_rotated(
+                torch.tensor(bboxes), torch.tensor(windows),
+                mode='iof').numpy().squeeze() > iof_thr
+    if (not valid_inds.any() and not allow_negative_crop):
+        return None,None,None
+    rboxes = bboxes[valid_inds,:]
+    rlabels = labels[valid_inds]
+
+    return img, rboxes, rlabels
 
     # Concat/clip labels
     labels4 = np.concatenate(labels4, 0)
