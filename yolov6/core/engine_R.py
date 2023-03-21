@@ -235,14 +235,14 @@ class Trainer:
             if self.main_process:
                 self.progress.remove_task(self.task)
                 self.progress.stop()
-            LOGGER.info(("\n" + "%10s" * (self.loss_num + 1)) % (*self.loss_info,))
-            LOGGER.info(
-                ("\n" + "%10g" * (self.loss_num + 1))
-                % (
-                    self.epoch,
-                    *self.mean_loss,
+                LOGGER.info(("\n" + "%10s" * (self.loss_num + 1)) % (*self.loss_info,))
+                LOGGER.info(
+                    ("\n" + "%10g" * (self.loss_num + 1))
+                    % (
+                        self.epoch,
+                        *self.mean_loss,
+                    )
                 )
-            )
         except Exception as _:
             LOGGER.error("ERROR in training steps.")
             raise

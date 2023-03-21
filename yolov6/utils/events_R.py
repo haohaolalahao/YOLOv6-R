@@ -66,7 +66,7 @@ class RichStreamAndFileLogger(object):
 
     def __call__(
         self, log_file_name: str = "./demo.log", logger_name: str = "OB_rich", log_level: str = "DEBUG"
-    ) -> logging.Logger:
+    ):
         # * create logging
         self.log_file_name = log_file_name
         self.logger_name = logger_name
@@ -94,7 +94,7 @@ class RichStreamAndFileLogger(object):
         # Note logger.propagate 设置为True在多进程情况下shell会输出两次
         logger.propagate = False
 
-        return logger
+        return logger, file_handler
 
 
 def set_logging(name=None):
@@ -104,7 +104,7 @@ def set_logging(name=None):
 
 
 # LOGGER = set_logging(__name__)
-LOGGER = RichStreamAndFileLogger()()
+LOGGER, FILEHANDLER = RichStreamAndFileLogger()()
 NCOLS = min(100, shutil.get_terminal_size().columns)
 
 
