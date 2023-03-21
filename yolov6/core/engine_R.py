@@ -18,13 +18,16 @@ from tqdm import tqdm
 
 import tools.eval_R as eval
 from yolov6.data.data_load_R import create_dataloader
+from yolov6.models.losses.loss_distill_ns_R import ComputeLoss as ComputeLoss_distill_ns
 from yolov6.models.losses.loss_distill_R import ComputeLoss as ComputeLoss_distill
 from yolov6.models.losses.loss_fuseab import ComputeLoss as ComputeLoss_ab
 from yolov6.models.losses.loss_R import ComputeLoss as ComputeLoss
 from yolov6.models.yolo_R import build_model
 from yolov6.solver.build import build_lr_scheduler, build_optimizer
 from yolov6.utils.checkpoint import load_state_dict, save_checkpoint, strip_optimizer
+from yolov6.utils.checkpoint import load_state_dict, save_checkpoint, strip_optimizer
 from yolov6.utils.ema import ModelEMA, de_parallel
+from yolov6.utils.events_R import LOGGER, NCOLS, load_yaml, write_tbimg, write_tblog
 from yolov6.utils.events_R import LOGGER, NCOLS, load_yaml, write_tbimg, write_tblog
 from yolov6.utils.general import download_ckpt
 from yolov6.utils.nms_R import xywh2xyxy, xyxy2xywh
@@ -52,13 +55,14 @@ class Trainer:
         self.data_dict = load_yaml(args.data_path)
         self.num_classes = self.data_dict["nc"]
         # NOTE data loader
-        self.train_loader, self.val_loader = self.get_data_loader(args, cfg, self.data_dict)
+        self.train_loader, self.val_loader = self.get_data_loader(
+            args, cfg, self.data_dict
+        )
         # get model and optimizer
-        # NOTE YOLOv6n 和 YOLOV6s 都是默认蒸馏配置, 需要将这个解耦开了
-
+        # NOTE YOLOv6n 和 YOLOV6s 都是默认蒸馏配置
         self.distill_ns = True if self.args.distill and args.distill_ns else False
         # NOTE change model
-        model = self.get_model(args, cfg, self.num_classes, device)
+        model = self.get_model(args, cfg, self.num_classes, device,distill_ns = self.distill_ns)
         if self.args.distill:
             if self.args.fuse_ab:
                 LOGGER.error("ERROR in: Distill models should turn off the fuse_ab.\n")
@@ -166,7 +170,7 @@ class Trainer:
                 transient=True,
                 expand=True,
             )
-        if self.args.distill:
+        elif self.args.distill and not self.distill_ns:
             self.loss_num += 1
             self.loss_info += ["cwd_loss"]
             self.progress = Progress(
@@ -182,6 +186,12 @@ class Trainer:
                 TextColumn("[red]{task.fields[ang_loss]}"),
                 "•",
                 TextColumn("[red]{task.fields[cwd_loss]}"),
+                BarColumn(
+                    bar_width=None,
+                    style="white",
+                    complete_style="blue",
+                    finished_style="green",
+                ),
                 BarColumn(
                     bar_width=None,
                     style="white",
@@ -255,26 +265,76 @@ class Trainer:
                 self.step + self.max_stepnum * self.epoch,
                 type="train",
             )
+            write_tbimg(
+                self.tblogger,
+                self.vis_train_batch,
+                self.step + self.max_stepnum * self.epoch,
+                type="train",
+            )
 
         # forward
         with amp.autocast(enabled=self.device != "cpu"):
             preds, s_featmaps = self.model(images)
-            if self.args.distill:
+            if self.distill_ns:
                 with torch.no_grad():
                     t_preds, t_featmaps = self.teacher_model(images)
                 temperature = self.args.temperature
-                total_loss, loss_items = self.compute_loss_distill(
-                    preds,
-                    t_preds,
-                    s_featmaps,
-                    t_featmaps,
-                    targets,
-                    epoch_num,
-                    self.max_epoch,
-                    temperature,
-                    step_num,
-                )
-
+                if(epoch_num<self.max_epoch*0.0):
+                    total_loss, loss_items = self.compute_loss_distill(
+                        preds,
+                        t_preds,
+                        s_featmaps,
+                        t_featmaps,
+                        targets,
+                        epoch_num,
+                        self.max_epoch,
+                        temperature,
+                        step_num,
+                        distill_ns_off=True
+                    )
+                else:
+                    total_loss, loss_items = self.compute_loss_distill(
+                        preds,
+                        t_preds,
+                        s_featmaps,
+                        t_featmaps,
+                        targets,
+                        epoch_num,
+                        self.max_epoch,
+                        temperature,
+                        step_num,
+                        distill_ns_off=False
+                    )
+            elif self.args.distill and not self.distill_ns:
+                with torch.no_grad():
+                    t_preds, t_featmaps = self.teacher_model(images)
+                temperature = self.args.temperature
+                if(epoch_num<self.max_epoch*0.0):
+                    total_loss, loss_items = self.compute_loss_distill(
+                        preds,
+                        t_preds,
+                        s_featmaps,
+                        t_featmaps,
+                        targets,
+                        epoch_num,
+                        self.max_epoch,
+                        temperature,
+                        step_num,
+                        distill_off=True
+                    )
+                else:
+                    total_loss, loss_items = self.compute_loss_distill(
+                        preds,
+                        t_preds,
+                        s_featmaps,
+                        t_featmaps,
+                        targets,
+                        epoch_num,
+                        self.max_epoch,
+                        temperature,
+                        step_num,
+                        distill_off=False
+                    )
             elif self.args.fuse_ab:
                 total_loss, loss_items = self.compute_loss(
                     (preds[0], preds[3], preds[4]), targets, epoch_num, step_num
@@ -317,6 +377,12 @@ class Trainer:
             }
 
             save_ckpt_dir = osp.join(self.save_dir, "weights")
+            save_checkpoint(
+                ckpt,
+                (is_val_epoch) and (self.ap == self.best_ap),
+                save_ckpt_dir,
+                model_name="last_ckpt",
+            )
             save_checkpoint(
                 ckpt,
                 (is_val_epoch) and (self.ap == self.best_ap),
@@ -371,6 +437,11 @@ class Trainer:
             eval_img_size = get_cfg_value(self.cfg.eval_params, "img_size", self.img_size)
             results, vis_outputs, vis_paths = eval.run(
                 self.data_dict,
+                batch_size=get_cfg_value(
+                    self.cfg.eval_params,
+                    "batch_size",
+                    self.batch_size // self.world_size * 2,
+                ),
                 batch_size=get_cfg_value(
                     self.cfg.eval_params,
                     "batch_size",
@@ -445,37 +516,26 @@ class Trainer:
         if self.args.distill:
             # NOTE n/s 所使用的蒸馏函数不一样，原因在HEAD部分
             if self.distill_ns:
-                Loss_distill_func = ComputeLoss_distill_ns()
-                self.compute_loss_distill = Loss_distill_func(
-                    num_classes=self.data_dict["nc"],
-                    ori_img_size=self.img_size,
-                    fpn_strides=self.cfg.model.head.strides,
-                    warmup_epoch=self.cfg.model.head.atss_warmup_epoch,
-                    use_dfl=self.cfg.model.head.use_dfl,
-                    reg_max=self.cfg.model.head.reg_max,
-                    angle_max=self.cfg.model.head.angle_max,
-                    angle_fitting_methods=self.cfg.model.head.angle_fitting_methods,
-                    iou_type=self.cfg.model.head.iou_type,
-                    distill_weight=self.cfg.model.head.distill_weight,
-                    distill_feat=self.args.distill_feat,
-                    loss_weight=self.cfg.loss.loss_weight,
-                )
+                Loss_distill_func = ComputeLoss_distill_ns
+                LOGGER.info("The current distill method mode is NS")
             else:
                 Loss_distill_func = ComputeLoss_distill
-                self.compute_loss_distill = Loss_distill_func(
-                    num_classes=self.data_dict["nc"],
-                    ori_img_size=self.img_size,
-                    fpn_strides=self.cfg.model.head.strides,
-                    warmup_epoch=self.cfg.model.head.atss_warmup_epoch,
-                    use_dfl=self.cfg.model.head.use_dfl,
-                    reg_max=self.cfg.model.head.reg_max,
-                    angle_max=self.cfg.model.head.angle_max,
-                    angle_fitting_methods=self.cfg.model.head.angle_fitting_methods,
-                    iou_type=self.cfg.model.head.iou_type,
-                    distill_weight=self.cfg.model.head.distill_weight,
-                    distill_feat=self.args.distill_feat,
-                    loss_weight=self.cfg.loss.loss_weight,
-                )
+                LOGGER.info("The current distill method mode is normal")
+
+            self.compute_loss_distill = Loss_distill_func(
+                num_classes=self.data_dict["nc"],
+                ori_img_size=self.img_size,
+                fpn_strides=self.cfg.model.head.strides,
+                warmup_epoch=self.cfg.model.head.atss_warmup_epoch,
+                use_dfl=self.cfg.model.head.use_dfl,
+                reg_max=self.cfg.model.head.reg_max,
+                angle_max=self.cfg.model.head.angle_max,
+                angle_fitting_methods=self.cfg.model.head.angle_fitting_methods,
+                iou_type=self.cfg.model.head.iou_type,
+                distill_weight=self.cfg.model.head.distill_weight,
+                distill_feat=self.args.distill_feat,
+                loss_weight=self.cfg.loss.loss_weight,
+            )
 
     def prepare_for_steps(self):
         if self.epoch > self.start_epoch:
@@ -503,14 +563,30 @@ class Trainer:
                 self.task = self.progress.add_task(
                     "LOGGER",
                     total=len(self.train_loader),
+                    "LOGGER",
+                    total=len(self.train_loader),
                     epoch_name=f"Epoch {self.epoch}/{self.max_epoch - 1}",
                     iou_loss=f"iou{self.mean_loss[0]:7.4g}",
                     dfl_loss=f"dfl{self.mean_loss[1]:7.4g}",
                     cls_loss=f"cls{self.mean_loss[2]:7.4g}",
                     ang_loss=f"angle{self.mean_loss[3]:7.4g}",
                 )
+            elif self.distill_ns:
+                self.task = self.progress.add_task(
+                    "LOGGER",
+                    total=len(self.train_loader),
+                    epoch_name=f"Epoch {self.epoch}/{self.max_epoch - 1}",
+                    iou_loss=f"iou{self.mean_loss[0]:7.4g}",
+                    dfl_loss=f"dfl{self.mean_loss[1]:7.4g}",
+                    cls_loss=f"cls{self.mean_loss[2]:7.4g}",
+                    ang_cls_loss=f"angle_cls{self.mean_loss[3]:7.4g}",
+                    ang_reg_loss=f"angle_reg{self.mean_loss[4]:7.4g}",
+                    cwd_loss=f"cwd{self.mean_loss[5]:7.4g}",
+                    )
             else:
                 self.task = self.progress.add_task(
+                    "LOGGER",
+                    total=len(self.train_loader),
                     "LOGGER",
                     total=len(self.train_loader),
                     epoch_name=f"Epoch {self.epoch}/{self.max_epoch - 1}",
@@ -538,6 +614,16 @@ class Trainer:
                     dfl_loss=f"dfl{self.mean_loss[1]:7.4g}",
                     cls_loss=f"cls{self.mean_loss[2]:7.4g}",
                     ang_loss=f"angle{self.mean_loss[3]:7.4g}",
+                )
+            elif self.distill_ns:
+                self.progress.update(
+                    self.task,
+                    iou_loss=f"iou{self.mean_loss[0]:7.4g}",
+                    dfl_loss=f"dfl{self.mean_loss[1]:7.4g}",
+                    cls_loss=f"cls{self.mean_loss[2]:7.4g}",
+                    ang_cls_loss=f"angle_cls{self.mean_loss[3]:7.4g}",
+                    ang_reg_loss=f"angle_reg{self.mean_loss[4]:7.4g}",
+                    cwd_loss=f"cwd{self.mean_loss[5]:7.4g}",
                 )
             else:
                 self.progress.update(
@@ -568,15 +654,25 @@ class Trainer:
                 1,
                 np.interp(curr_step, [0, self.warmup_stepnum], [1, 64 / self.batch_size]).round(),
             )
+            self.accumulate = max(
+                1,
+                np.interp(curr_step, [0, self.warmup_stepnum], [1, 64 / self.batch_size]).round(),
+            )
             for k, param in enumerate(self.optimizer.param_groups):
                 warmup_bias_lr = self.cfg.solver.warmup_bias_lr if k == 2 else 0.0
                 param["lr"] = np.interp(
                     curr_step,
                     [0, self.warmup_stepnum],
                     [warmup_bias_lr, param["initial_lr"] * self.lf(self.epoch)],
+                    curr_step,
+                    [0, self.warmup_stepnum],
+                    [warmup_bias_lr, param["initial_lr"] * self.lf(self.epoch)],
                 )
                 if "momentum" in param:
                     param["momentum"] = np.interp(
+                        curr_step,
+                        [0, self.warmup_stepnum],
+                        [self.cfg.solver.warmup_momentum, self.cfg.solver.momentum],
                         curr_step,
                         [0, self.warmup_stepnum],
                         [self.cfg.solver.warmup_momentum, self.cfg.solver.momentum],
@@ -726,6 +822,7 @@ class Trainer:
         bs, _, h, w = images.shape  # batch size, _, height, width
         bs = min(bs, max_subplots)  # limit plot images
         ns = np.ceil(bs**0.5)  # number of subplots (square)
+        ns = np.ceil(bs**0.5)  # number of subplots (square)
         paths = self.batch_data[2]  # image paths
         # Build Image
         mosaic = np.full((int(ns * h), int(ns * w), 3), 255, dtype=np.uint8)  # init
@@ -779,6 +876,12 @@ class Trainer:
                         poly = cv2.boxPoints(rect)
                         poly = np.int0(poly)
                         cv2.drawContours(
+                            mosaic,
+                            contours=[poly],
+                            contourIdx=-1,
+                            color=color,
+                            thickness=2,
+                            lineType=cv2.LINE_AA,
                             mosaic,
                             contours=[poly],
                             contourIdx=-1,

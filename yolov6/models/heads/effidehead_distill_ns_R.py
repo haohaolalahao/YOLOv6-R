@@ -5,7 +5,7 @@ import math
 from yolov6.layers.common import *
 from yolov6.assigners.anchor_generator import generate_anchors
 from yolov6.utils.general import dist2bbox
-
+from yolov6.utils.events import LOGGER
 
 class Detect(nn.Module):
     '''Efficient Decoupled Head for Cost-free Distillation.(FOR NANO/SMALL MODEL)
@@ -25,8 +25,8 @@ class Detect(nn.Module):
         self.reg_max = reg_max
         self.angle_max = angle_max
         self.angle_fitting_methods = angle_fitting_methods
-        
-        
+
+
         self.proj_conv = nn.Conv2d(self.reg_max + 1, 1, 1, bias=False)
         self.proj_angle_conv = nn.Conv2d(self.angle_max + 1, 1, 1, bias=False)
         self.grid_cell_offset = 0.5
@@ -44,7 +44,7 @@ class Detect(nn.Module):
         self.angle_preds_theta = nn.ModuleList()
         # Efficient decoupled head layers
         for i in range(num_layers):
-            idx = i * 9 
+            idx = i * 9
             self.stems.append(head_layers[idx])
             self.cls_convs.append(head_layers[idx+1])
             self.reg_convs.append(head_layers[idx+2])
@@ -54,7 +54,7 @@ class Detect(nn.Module):
             self.reg_preds_lrtb.append(head_layers[idx+6])
             self.angle_preds.append(head_layers[idx+7])
             self.angle_preds_theta.append(head_layers[idx+8])
-
+        LOGGER.info("The current model head is N/S")
     def initialize_biases(self):
 
         for conv in self.cls_preds:
@@ -80,7 +80,7 @@ class Detect(nn.Module):
             w = conv.weight
             w.data.fill_(0.)
             conv.weight = torch.nn.Parameter(w, requires_grad=True)
-        
+
         #NOTE 角度回归头进行一个初始化的操作
         for conv in self.angle_preds:
             b = conv.bias.view(-1,)
@@ -89,7 +89,7 @@ class Detect(nn.Module):
             w = conv.weight
             w.data.fill_(0.0)
             conv.weight = torch.nn.Parameter(w, requires_grad=True)
-            
+
         #NOTE 角度分类头进行一个初始化的操作
         for conv in self.angle_preds_theta:
             b = conv.bias.view(-1,)
@@ -98,8 +98,8 @@ class Detect(nn.Module):
             w = conv.weight
             w.data.fill_(0.0)
             conv.weight = torch.nn.Parameter(w, requires_grad=True)
-        
-        
+
+
         self.proj = nn.Parameter(torch.linspace(0, self.reg_max, self.reg_max + 1), requires_grad=False)
         self.proj_conv.weight = nn.Parameter(self.proj.view([1, self.reg_max + 1, 1, 1]).clone().detach(),
                                                    requires_grad=False)
@@ -132,7 +132,7 @@ class Detect(nn.Module):
                 angle_feat = self.angle_convs[i](angle_x)
                 angle_reg = self.angle_preds[i](angle_feat)
                 angle_cls = self.angle_preds_theta[i](angle_feat)
-                
+
                 angle_reg = angle_reg ** 2
                 cls_output = torch.sigmoid(cls_output)
                 cls_score_list.append(cls_output.flatten(2).permute((0, 2, 1)))
@@ -140,7 +140,7 @@ class Detect(nn.Module):
                 reg_lrtb_list.append(reg_output_lrtb.flatten(2).permute((0, 2, 1)))
                 angle_reg_list.append(angle_reg.flatten(2).permute((0, 2, 1)))
                 angle_cls_list.append(angle_cls.flatten(2).permute((0, 2, 1)))
-            
+
             cls_score_list = torch.cat(cls_score_list, axis=1)
             reg_distri_list = torch.cat(reg_distri_list, axis=1)
             reg_lrtb_list = torch.cat(reg_lrtb_list, axis=1)
@@ -169,14 +169,13 @@ class Detect(nn.Module):
                 angle_feat = self.angle_convs[i](angle_x)
                 angle_reg = self.angle_preds[i](angle_feat)
                 #NOTE 回归范式进行解码
-                angle_reg = angle_reg **2           
-                
+                angle_reg = angle_reg **2
+
                 cls_output = torch.sigmoid(cls_output)
                 cls_score_list.append(cls_output.reshape([b, self.nc, l]))
                 reg_lrtb_list.append(reg_output_lrtb.reshape([b, 4, l]))
-                angle_reg_list.append(angle_reg.reshape([b, 4, l]))
-               
-            
+                angle_reg_list.append(angle_reg.reshape([b, 1, l]))
+
             cls_score_list = torch.cat(cls_score_list, axis=-1).permute(0, 2, 1)
             reg_lrtb_list = torch.cat(reg_lrtb_list, axis=-1).permute(0, 2, 1)
             angle_reg_list = torch.cat(angle_reg_list, axis=-1).permute(0 ,2, 1)
