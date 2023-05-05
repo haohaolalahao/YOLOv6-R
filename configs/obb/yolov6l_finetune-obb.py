@@ -53,7 +53,7 @@ loss = dict(
     loss_mode="hbb+angle",
     # loss_mode="obb",
     # NOTE for angle regression
-    # loss_weight={"class": 1.0, "iou": 2.5, "dfl": 0.5, "angle": 0.05},
+    # loss_weight={"class": 1.0, "iou": 2.0, "dfl": 0.5, "angle": 0.05},
     # NOTE for angle classification
     # loss_weight={"class": 1.0, "iou": 2.5, "dfl": 0.5, "angle": 0.05},
     loss_weight={

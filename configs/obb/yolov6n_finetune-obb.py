@@ -35,8 +35,8 @@ model = dict(
             "angle": 1.0
         },
         # NOTE for angle regression
-        angle_fitting_methods='regression',
-        angle_max=1,
+        # angle_fitting_methods='regression',
+        # angle_max=1,
         # NOTE for angle csl
         # angle_fitting_methods="csl",
         # angle_max=180,
@@ -44,24 +44,24 @@ model = dict(
         # angle_fitting_methods='dfl',
         # angle_max=180,
         # NOTE for angle MGAR
-        # angle_fitting_methods='MGAR',
-        # angle_max=5,
+        angle_fitting_methods='MGAR',
+        angle_max=5,
     ),
 )
 
 loss = dict(
-    # loss_mode="hbb+angle",
-    loss_mode="obb",
+    loss_mode="hbb+angle",
+    # loss_mode="obb",
     # loss_mode="obb+angle",
     # NOTE RIoU 的 weight 需要调节, weight对于其影响蛮大, 设置2.5时候有问题, 跑飞, 看看1.5 和 1.0
     # NOTE for angle regression
-    loss_weight={"class": 1.0, "iou": 2.0, "dfl": 0.5, "angle": 0.05},
+    # loss_weight={"class": 1.0, "iou": 2.0, "dfl": 0.5, "angle": 0.05},
     # NOTE for angle csl
     # loss_weight={"class": 1.0, "iou": 2.5, "dfl": 0.5, "angle": 0.05, 'cwd': 0.2},
     # NOTE for angle dfl
     # loss_weight={"class": 1.0, "iou": 2.5, "dfl": 0.5, "angle": 0.25, 'cwd': 10},
     # NOTE for angle MGAR
-    # loss_weight={"class": 1.0, "iou": 2.5, "dfl": 0.5, "angle": 0.05, "MGAR_cls": 0.05, "MGAR_reg": 0.05, 'cwd': 0.2, },
+    loss_weight={"class": 1.0, "iou": 2.5, "dfl": 0.5, "angle": 0.05, "MGAR_cls": 0.05, "MGAR_reg": 0.05, 'cwd': 0.2, },
 )
 
 

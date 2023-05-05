@@ -116,3 +116,8 @@ venv.bak/
 *.pt
 *.engine
 *.so
+
+# picture
+*.jpg
+*.png
+

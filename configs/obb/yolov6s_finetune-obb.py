@@ -69,7 +69,7 @@ loss = dict(
         "dfl": 2.5,
         "angle": 0.05,
         "MGAR_cls": 0.05,
-        "MGAR_reg": 0.05,
+        "MGAR_reg": 0.005,
         "cwd": 0.2,
     },
 )

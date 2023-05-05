@@ -1,11 +1,11 @@
 epoch=best
-eval_name="yolov6m_MGAR_ss_new_aug_1_$epoch"
+eval_name="yolov6n_MGAR_ms_$epoch"
 eval_path="runs/DOTA-test/test"
-weight_path="./runs/DOTA-ss-baseline/yolov6l_MGAR_ss_new/weights/${epoch}_ckpt.pt"
+weight_path="./runs/DOTA-ms-baseline/yolov6n_MGAR1/weights/${epoch}_ckpt.pt"
 CUDA_VISIBLE_DEVICES=0 python tools/eval_R.py \
-	--data "./data/DOTA_ss_new.yaml" \
+	--data "./data/DOTA-ms.yaml" \
 	--weights $weight_path \
-	--batch-size 64 \
+	--batch-size 32 \
 	--img-size 1024 \
 	--conf-thres 0.03 \
 	--iou-thres 0.65 \
@@ -20,8 +20,8 @@ CUDA_VISIBLE_DEVICES=0 python tools/eval_R.py \
 	--verbose \
 	--plot_confusion_matrix \
 	--letterbox_return_int \
-	--scale_exact
-# --force_no_pad
+	--scale_exact \
+	--force_no_pad
 # --not_infer_on_rect
 # parser.add_argument('--reproduce_640_eval', default=False, action='store_true', help='whether to reproduce 640 infer result, overwrite some config')
 # parser.add_argument('--eval_config_file', type=str, default='./configs/experiment/eval_640_repro.py', help='config file for repro 640 infer result')
