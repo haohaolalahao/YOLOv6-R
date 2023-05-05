@@ -260,7 +260,7 @@ class Evaler:
                     "mAP@.5:.95",
                 )
                 LOGGER.info(s)
-                pf = "%-16s" + "%12i" * 2 + "%12.3g" * 5  # print format
+                pf = "%-16s" + "%12i" * 2 + "%12.5g" * 5  # print format
                 LOGGER.info(pf % ("all", seen, nt.sum(), mp, mr, f1.mean(0)[AP50_F1_max_idx], map50, map))
 
                 self.pr_metric_result = (map50, map)
