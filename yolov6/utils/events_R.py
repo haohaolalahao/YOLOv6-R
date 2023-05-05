@@ -18,83 +18,29 @@ class OBRichHandler(RichHandler):
         "distill_loss",
     ]
 
+class RichLogger(logging.Logger):
+    def __init__(self, name, level=logging.NOTSET):
+        super().__init__(name, level)
+        self.propagate = False
+        self._set_rich_logger()
 
-class RichStreamLogger(object):
-    """stream logger based rich.logging.RichHandler [__call__]
-
-    Args:
-        logger_name (str, optional): [description]. Defaults to 'OB_rich'.
-        log_level (str, optional): [description]. Defaults to 'DEBUG'.
-
-    Returns:
-        logging.Logger: [description]
-    """
-
-    def __call__(self, logger_name: str = "OB_rich", log_level: str = "DEBUG") -> logging.Logger:
-        # * create logging
-        logger = logging.getLogger(logger_name)
-        logger.setLevel(log_level)
-
-        # * StreamHandler -> rich
-        console_handler = OBRichHandler(
-            rich_tracebacks=True, tracebacks_show_locals=True, log_time_format="[%Y-%m-%d %H:%M:%S:%S]"
-        )
-
-        rich_formatter = logging.Formatter("%(message)s")
-        console_handler.setFormatter(rich_formatter)
-        logger.addHandler(console_handler)
-        # Note logger.propagate 设置为True在多进程情况下shell会输出两次
-        logger.propagate = False
-
-        return logger
-
-
-class RichStreamAndFileLogger(object):
-    """stream and file logger [__call__]
-    Args:
-        log_file_name (str, optional): [description]. Defaults to './demo.log'.
-        logger_name (str, optional): [description]. Defaults to 'OB_rich'.
-        log_level (str, optional): [description]. Defaults to 'DEBUG'.
-
-    Returns:
-        logging.Logger: [new looger]
-    """
-
-    def __init__(self) -> None:
-        self.logger_name = None
-        self.log_file_name = None
-
-    def __call__(
-        self, log_file_name: str = "./demo.log", logger_name: str = "OB_rich", log_level: str = "DEBUG"
-    ) -> logging.Logger:
-        # * create logging
-        self.log_file_name = log_file_name
-        self.logger_name = logger_name
-        logger = logging.getLogger(self.logger_name)
-        logger.setLevel(log_level)
-
-        # * FileHandler -> File
-        # * StreamHandler -> rich
-        file_handler = logging.FileHandler(self.log_file_name, encoding="utf-8")
+    def _set_rich_logger(self):
         console_handler = OBRichHandler(
             rich_tracebacks=True, tracebacks_show_locals=True, log_time_format="[%m-%d %H:%M]"
         )
-
-        file_formatter = logging.Formatter(
-            "%(levelname)s %(asctime)s [%(filename)s:%(funcName)s:%(lineno)d] %(message)s"
-        )
         rich_formatter = logging.Formatter("%(message)s")
-
-        file_handler.setFormatter(file_formatter)
         console_handler.setFormatter(rich_formatter)
+        self.addHandler(console_handler)
 
-        logger.addHandler(file_handler)
-        logger.addHandler(console_handler)
-
-        # Note logger.propagate 设置为True在多进程情况下shell会输出两次
-        logger.propagate = False
-
-        return logger
+    def set_file_path(self, file_path):
+        log_dir = os.path.dirname(file_path)
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+        handler = logging.FileHandler(file_path)
+        handler.setLevel(logging.DEBUG)
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        self.addHandler(handler)
 
 
 def set_logging(name=None):
@@ -104,7 +50,7 @@ def set_logging(name=None):
 
 
 # LOGGER = set_logging(__name__)
-LOGGER = RichStreamAndFileLogger()()
+LOGGER = RichLogger("YOLOv6-R")
 NCOLS = min(100, shutil.get_terminal_size().columns)
 
 

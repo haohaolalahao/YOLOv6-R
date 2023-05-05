@@ -97,7 +97,7 @@ def get_args_parser(add_help=True):
         help="experiments description file, lower priority than reproduce_640_eval",
     )
     args = parser.parse_args()
-
+    LOGGER.set_file_path(args.save_dir + "/eval.log")
     if args.config_file:
         assert os.path.exists(args.config_file), print("Config file {} does not exist".format(args.config_file))
         cfg = Config.fromfile(args.config_file)

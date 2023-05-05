@@ -117,6 +117,7 @@ def check_and_init(args):
         if master_process:
             os.makedirs(args.save_dir)
 
+    LOGGER.set_file_path(args.save_dir + "/train.log")
     cfg = Config.fromfile(args.conf_file)
     if not hasattr(cfg, "training_mode"):
         setattr(cfg, "training_mode", "repvgg")
