@@ -72,7 +72,6 @@ solver = dict(
     lrf=0.05,
     momentum=0.843,
     weight_decay=0.05,
-    weight_frcay=0.05,
     warmup_epochs=1.0,
     warmup_momentum=0.5,
     warmup_bias_lr=0.05,
@@ -90,11 +89,12 @@ data_aug = dict(
     flipud=0.5,
     fliplr=0.5,
     rotate=0.5,
-    rect_classes=[9, 11],
+    # rect_classes=[9, 11],
+    rect_classes=None,
     # NOTE mosaic 数值需要确定一下
     mosaic=0.0,
     mixup_mosaic=0.0,
-    mixup=0.0,
+    mixup=0.5,
 )
 
 eval_params = dict(
