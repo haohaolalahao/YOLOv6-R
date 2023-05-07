@@ -5,7 +5,7 @@ CUDA_VISIBLE_DEVICES=0 python3 tools/eval_R_Deploy.py \
 	--img-size 800 \
 	--conf-thres 0.1 \
 	--iou-thres 0.65 \
-	--task "val" \
+	--task "val"\
 	--device 0 \
 	--save_dir "./runs/val/" \
 	--name "dior" \
@@ -17,7 +17,7 @@ CUDA_VISIBLE_DEVICES=0 python3 tools/eval_R_Deploy.py \
 	--plot_confusion_matrix \
 	--letterbox_return_int \
 	--scale_exact \
-    --force_no_pad 
+    --force_no_pad
 # --not_infer_on_rect
 # --test_load_size 800 \
 # parser.add_argument('--reproduce_640_eval', default=False, action='store_true', help='whether to reproduce 640 infer result, overwrite some config')

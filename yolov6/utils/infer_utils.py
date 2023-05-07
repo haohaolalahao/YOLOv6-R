@@ -134,8 +134,8 @@ class DetectMultiBackend(nn.Module):
             bindings = OrderedDict()
             output_names = []
             fp16 = False  # default updated below
-            import ipdb
-            ipdb.set_trace()
+            # import ipdb
+            # ipdb.set_trace()
             dynamic = False
             for i in range(model.num_bindings):
                 name = model.get_binding_name(i)

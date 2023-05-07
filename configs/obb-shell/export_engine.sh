@@ -1,7 +1,7 @@
+onnx_path="runs/HRSC2016-baseline/yolov6n-obb+nodetach/weights/best_ckpt.onnx"
+engine_path="runs/HRSC2016-baseline/yolov6n-obb+nodetach/weights/best_ckpt.engine"
 CUDA_VISIBLE_DEVICES=1 trtexec \
-    --onnx=/home/crescent/YOLOv6-R/runs/DIOR/yolov6s_csl_dfl_AdamW_small_lr3/weights/best_ckpt.onnx \
-    --saveEngine=/home/crescent/YOLOv6-R/demo.engine \
+    --onnx=$onnx_path \
+    --saveEngine=$engine_path \
     --fp16 \
-    --verbose \
-
-    
+    --verbose
